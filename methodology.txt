@@ -1,0 +1,19 @@
+The methodology implemented in this solution is a high-performance single-model pipeline designed for the Home Credit Default Risk prediction task. It focuses on maximizing AUC using a carefully tuned LightGBM GBDT model with strong feature engineering and efficient encoding, while staying within moderate RAM limits.
+
+First, the raw training and test datasets are loaded and the class imbalance ratio is computed. This ratio is later used as scale_pos_weight in LightGBM so the model properly accounts for the rare default class.
+
+Next, extensive feature engineering is applied through a unified make_features function. Temporal attributes such as age, employment duration, and relative time ratios are derived from raw day-based fields. Financial relationships are captured using credit-income, annuity-income, loan term, and disposable-income ratios, which better reflect repayment ability than absolute amounts. Log transformations are applied to skewed monetary variables to stabilize distributions.
+
+A major enhancement comes from engineering composite features from the three external risk scores (EXT_SOURCE_1/2/3). Their mean, variance, range, products, harmonic/geometric combinations, and interactions with age, income, and payment burden are created, because these scores are known to be the strongest predictors of default. Polynomial interactions among top predictors further increase nonlinear modeling capacity without manual feature design.
+
+The methodology also discretizes key continuous variables into quantile bins (age, credit, income, EXT scores, payment rate). These bins help tree models capture threshold-based risk segments. Binary risk flags are added for conditions such as high credit load, young age, low external score, or high annuity burden. Aggregated document counts, credit bureau enquiry totals, social-circle default rates, and region ratings introduce behavioral and demographic risk signals. Missing-value indicator flags are included so the model can learn patterns in data absence.
+
+Categorical information is encoded using three complementary schemes. Out-of-fold target encoding converts high-cardinality categories into smoothed default probabilities without leakage. Frequency encoding captures how common each category is in the population, and count encoding adds raw occurrence counts. Remaining categorical columns are label-encoded to integer form for LightGBM compatibility.
+
+Before modeling, preprocessing removes columns with excessive missingness and near-zero variance, aligns train/test features, and downcasts numeric types to float32 to reduce memory usage. This ensures stable training on 8–16 GB systems while preserving predictive signal.
+
+The predictive model is a tuned LightGBM GBDT classifier optimized for AUC. Key hyperparameters increase model capacity (num_leaves=127) while controlling overfitting through feature subsampling, bagging, regularization, leaf smoothing (path_smooth), and slower learning (learning_rate=0.005 with many trees). Early stopping on validation folds selects the optimal iteration count automatically.
+
+Training uses stratified 5-fold cross-validation to obtain out-of-fold predictions for unbiased AUC estimation. The same model is trained with two different random seeds, which changes fold splits and feature sampling; predictions from both runs are averaged. This inexpensive seed averaging reduces variance and typically adds a small AUC gain without extra model types.
+
+Finally, averaged or best-seed predictions are clipped to valid probability range and written to a submission file aligned with test IDs. The pipeline therefore combines rich domain-driven features, leakage-safe encoding, memory-efficient preprocessing, and a high-capacity yet regularized LightGBM model with cross-validated seed averaging to achieve strong leaderboard performance around the 0.7725+ AUC target.
